@@ -33,6 +33,47 @@ class svg_handler:
     def get_y_str(self, y_co):
         return str(self.get_y(y_co))
 
+    def curve_to_xml(self, curve, clockwise=True):
+        path_string = ""
+        amount_point = len(curve)
+
+        for i in range(amount_point):
+            if i == 0:
+                path_string += " M " + self.get_x_str(curve[0].co[0])
+                path_string += " " + self.get_y_str(curve[0].co[1])
+
+            if clockwise:
+                path_string += " C "
+                path_string += self.get_x_str(curve[i].handle_right[0])
+                path_string += " "
+                path_string += self.get_y_str(curve[i].handle_right[1])
+
+                path_string += ", "
+                path_string += self.get_x_str(curve[(i + 1) % amount_point].handle_left[0])
+                path_string += " "
+                path_string += self.get_y_str(curve[(i + 1) % amount_point].handle_left[1])
+
+                path_string += ", "
+                path_string += self.get_x_str(curve[(i + 1) % amount_point].co[0])
+                path_string += " "
+                path_string += self.get_y_str(curve[(i + 1) % amount_point].co[1])
+            else:
+                path_string += " C "
+                path_string += self.get_x_str(curve[-i].handle_left[0])
+                path_string += " "
+                path_string += self.get_y_str(curve[-i].handle_left[1])
+
+                path_string += ", "
+                path_string += self.get_x_str(curve[-1*(i + 1) % amount_point].handle_right[0])
+                path_string += " "
+                path_string += self.get_y_str(curve[-1*(i + 1) % amount_point].handle_right[1])
+
+                path_string += ", "
+                path_string += self.get_x_str(curve[-1*(i + 1) % amount_point].co[0])
+                path_string += " "
+                path_string += self.get_y_str(curve[-1*(i + 1) % amount_point].co[1])
+        path_string += 'z'
+        return path_string
 
 
 ob = bpy.context.object # active object
@@ -42,58 +83,41 @@ xmin = float("inf")
 
 ymax = -float("inf")
 ymin = float("inf")
-bezier_points = ob.data.splines.active.bezier_points
+curves = ob.data.splines
 # iterate over points of the curve's first spline
-for p in bezier_points:
-    if p.handle_right[0] > xmax:
-        xmax = p.co[0]
-    if p.handle_right[0] < xmin:
-        xmin = p.co[0]
-    if p.handle_right[1] > ymax:
-        ymax = p.co[1]
-    if p.handle_right[1] < ymin:
-        ymin = p.co[1]
 
-    if p.handle_left[0] > xmax:
-        xmax = p.co[0]
-    if p.handle_left[0] < xmin:
-        xmin = p.co[0]
-    if p.handle_left[1] > ymax:
-        ymax = p.co[1]
-    if p.handle_left[1] < ymin:
-        ymin = p.co[1]
+for spline in curves:
+    for p in spline.bezier_points:
+        if p.co[0] > xmax:
+              xmax = p.co[0]
+        if p.co[0] < xmin:
+            xmin = p.co[0]
+
+        if p.handle_right[0] > xmax:
+              xmax = p.handle_right[0]
+        if p.handle_right[0] < xmin:
+            xmin = p.handle_right[0]
+        if p.handle_right[1] > ymax:
+            ymax = p.handle_right[1]
+        if p.handle_right[1] < ymin:
+            ymin = p.handle_right[1]
+
+        if p.handle_left[0] > xmax:
+            xmax = p.handle_left[0]
+        if p.handle_left[0] < xmin:
+            xmin = p.handle_left[0]
+        if p.handle_left[1] > ymax:
+            ymax = p.handle_left[1]
+        if p.handle_left[1] < ymin:
+            ymin = p.handle_left[1]
 
 print("minimum is :", xmin)
 print("maximum is :", xmax)
 
 handler = svg_handler((xmin, ymin), (xmax, ymax), 0.2, 100)
 
-path_string = ""
 
-#"C 0 100, 100 100, 100 0"
-
-
-amount_point = len(bezier_points)
-
-for i in range(amount_point):
-    if i == 0:
-        path_string += "M " + handler.get_x_str(bezier_points[0].co[0])
-        path_string += " " + handler.get_y_str(bezier_points[0].co[1])
-
-    path_string += " C "
-    path_string += handler.get_x_str(bezier_points[i].handle_right[0])
-    path_string += " "
-    path_string += handler.get_y_str(bezier_points[i].handle_right[1])
-
-    path_string += ", "
-    path_string += handler.get_x_str(bezier_points[(i + 1) % amount_point].handle_left[0])
-    path_string += " "
-    path_string += handler.get_y_str(bezier_points[(i + 1) % amount_point].handle_left[1])
-
-    path_string += ", "
-    path_string += handler.get_x_str(bezier_points[(i + 1) % amount_point].co[0])
-    path_string += " "
-    path_string += handler.get_y_str(bezier_points[(i + 1) % amount_point].co[1])
-
+path_string = handler.curve_to_xml(curves[0].bezier_points, False)
+path_string += handler.curve_to_xml(curves[1].bezier_points, True)
 
 print(path_string)
