@@ -76,6 +76,13 @@ class svg_handler:
         path_string += 'z'
         return path_string
 
+def in_other_key(search_dict, search_value):
+    for key in search_dict:
+
+        if search_value in search_dict[key]:
+            return key
+    return None
+
 def ccw(A,B,C):
     return (C[1]-A[1]) * (B[0]-A[0]) > (B[1]-A[1]) * (C[0]-A[0])
 
@@ -166,7 +173,12 @@ handler = svg_handler((xmin, ymin), (xmax, ymax), 0.2, 100)
 
 path_string = ""
 layers = {}
+layer_hier = []
 amount_curves = len(curves)
+
+# create list with all the relations
+# relation is if a curve is within another curve
+# when curve is outside other it will not be added
 for spline_index1 in range(amount_curves):
     for spline_index2 in range(spline_index1 + 1,amount_curves,1):
         if spline_in_spline(curves[spline_index1], curves[spline_index2]):
@@ -181,10 +193,44 @@ for spline_index1 in range(amount_curves):
             else:
                 layers[curves[spline_index2]].append(curves[spline_index1])
 
+
+# when a is in b and b in c, then a will also be in relation with c, remove that relation
+keys = list(layers.keys())
+for key in keys:
+    for spline in layers[key]:
+        if spline in keys:
+            for rem_spline in layers[spline]:
+                layers[key].remove(rem_spline)
+
+# find top layer
+top_key = keys[0]
+at_top = False
+while not at_top:
+    new_key = in_other_key(layers, top_key)
+    if new_key is not None:
+        top_key = new_key
+    else:
+        at_top = True
+
 for key in layers:
     print(key.bezier_points[0].co)
     for s in layers[key]:
         print('/t', s.bezier_points[0].co)
+
+print('top key: ')
+print(top_key.bezier_points[0].co)
+
+layer_hier.append([top_key])
+layer_index = 0
+while(len(layer_hier[layer_index]) != 0):
+    layer_hier.append([])
+    for key in layer_hier[layer_index]:
+        if key in layers:
+            layer_hier[layer_index + 1].extend(layers[key])
+    print(layer_hier[layer_index])
+    layer_index += 1
+
+
 
 print(layers)
 
