@@ -103,8 +103,7 @@ def spline_in_spline(spline2, spline1):
 
     amount_intersection = 0
     amount_beziers = len(spline2.bezier_points)
-    print(line_co_0)
-    print(line_co_1)
+
     for curve_index in range(amount_beziers):
         P0 = spline2.bezier_points[curve_index].co
         P1 = spline2.bezier_points[curve_index].handle_right
@@ -115,148 +114,187 @@ def spline_in_spline(spline2, spline1):
             cob0 = (get_point(i / 10, 0, P0, P1, P2, P3), get_point(i / 10, 1, P0, P1, P2, P3))
             cob1 = (get_point((i + 1) / 10, 0, P0, P1, P2, P3), get_point((i + 1) / 10, 1, P0, P1, P2, P3))
             amount_intersection += intersect(line_co_0, line_co_1, cob0, cob1)
-    print(amount_intersection)
     return amount_intersection % 2 != 0
 
-ob = bpy.context.object # active object
-curves = ob.data.splines
+
+def get_co_extremes(curves):
+    xmax = -float("inf")
+    x_max_spline = curves[0]
+
+    xmin = float("inf")
+    x_min_spline = curves[0]
+
+    ymax = -float("inf")
+    ymax_spline = curves[0]
+
+    ymin = float("inf")
+    ymin_spline = curves[0]
+
+    # iterate over points of the curve's first spline
+    for spline in curves:
+        for p in spline.bezier_points:
+            if p.co[0] > xmax:
+                xmax = p.co[0]
+                x_max_spline = spline
+            if p.co[0] < xmin:
+                xmin = p.co[0]
+
+            if p.handle_right[0] > xmax:
+                xmax = p.handle_right[0]
+                x_max_spline = spline
+            if p.handle_right[0] < xmin:
+                xmin = p.handle_right[0]
+            if p.handle_right[1] > ymax:
+                ymax = p.handle_right[1]
+            if p.handle_right[1] < ymin:
+                ymin = p.handle_right[1]
+
+            if p.handle_left[0] > xmax:
+                xmax = p.handle_left[0]
+                x_max_spline = spline
+            if p.handle_left[0] < xmin:
+                xmin = p.handle_left[0]
+            if p.handle_left[1] > ymax:
+                ymax = p.handle_left[1]
+            if p.handle_left[1] < ymin:
+                ymin = p.handle_left[1]
+
+    return xmin, xmax, ymin, ymax
+
+
+def get_path_string(curves, handler):
+    path_string = ""
+    layers = {}
+    layer_hier = []
+    amount_curves = len(curves)
+    # create list with all the relations
+    # relation is if a curve is within another curve
+    # when curve is outside other it will not be added
+    for spline_index1 in range(amount_curves):
+        for spline_index2 in range(spline_index1 + 1, amount_curves, 1):
+            if spline_in_spline(curves[spline_index1], curves[spline_index2]):
+                if curves[spline_index1] not in layers:
+                    layers[curves[spline_index1]] = [curves[spline_index2]]
+                else:
+                    layers[curves[spline_index1]].append(curves[spline_index2])
+
+            if spline_in_spline(curves[spline_index2], curves[spline_index1]):
+                if curves[spline_index2] not in layers:
+                    layers[curves[spline_index2]] = [curves[spline_index1]]
+                else:
+                    layers[curves[spline_index2]].append(curves[spline_index1])
+
+    # when a is in b and b in c, then a will also be in relation with c, remove that relation
+    keys = list(layers.keys())
+    for key in keys:
+        for spline in layers[key]:
+            if spline in keys:
+                for rem_spline in layers[spline]:
+                    layers[key].remove(rem_spline)
+
+    # find top layers
+    not_visited_keys = list(curves)
+    top_list = []
+    while len(not_visited_keys) != 0:
+        top_key = not_visited_keys[0]
+        at_top = False
+
+        while not at_top:
+            new_key = in_other_key(layers, top_key)
+            if new_key is not None:
+                top_key = new_key
+            else:
+                at_top = True
+                top_list.append(top_key)
+                # descend and remove every key in relation with top
+                remove_list = [top_key]
+                prev_length = 0
+                start_index = 0
+                while len(remove_list) != prev_length:
+                    prev_length = len(remove_list)
+                    for i in range(start_index, len(remove_list), 1):
+                        if remove_list[i] in layers:
+                            remove_list.extend(layers[remove_list[i]])
+                        start_index = prev_length
+                for key in remove_list:
+                    not_visited_keys.remove(key)
+
+    layer_hier.append(top_list)
+    layer_index = 0
+    while (len(layer_hier[layer_index]) != 0):
+        layer_hier.append([])
+        for key in layer_hier[layer_index]:
+            if key in layers:
+                layer_hier[layer_index + 1].extend(layers[key])
+        layer_index += 1
+
+    inverted = True
+    for layer in layer_hier:
+        inverted = not inverted
+        for spline in layer:
+            path_string += handler.curve_to_xml(spline.bezier_points, inverted)
+
+    return path_string
+
+
+
+objects = bpy.context.selected_objects# active object
 
 xmax = -float("inf")
-x_max_spline = curves[0]
 
 xmin = float("inf")
-x_min_spline = curves[0]
 
 ymax = -float("inf")
-ymax_spline = curves[0]
 
 ymin = float("inf")
-ymin_spline = curves[0]
 
-# iterate over points of the curve's first spline
-for spline in curves:
-    for p in spline.bezier_points:
-        if p.co[0] > xmax:
-            xmax = p.co[0]
-            x_max_spline = spline
-        if p.co[0] < xmin:
-            xmin = p.co[0]
+list_height = []
 
-        if p.handle_right[0] > xmax:
-            xmax = p.handle_right[0]
-            x_max_spline = spline
-        if p.handle_right[0] < xmin:
-            xmin = p.handle_right[0]
-        if p.handle_right[1] > ymax:
-            ymax = p.handle_right[1]
-        if p.handle_right[1] < ymin:
-            ymin = p.handle_right[1]
+for obj in objects:
+    if obj.type == 'CURVE':
+        xmin_n, xmax_n, ymin_n, ymax_n = get_co_extremes(obj.data.splines)
 
-        if p.handle_left[0] > xmax:
-            xmax = p.handle_left[0]
-            x_max_spline = spline
-        if p.handle_left[0] < xmin:
-            xmin = p.handle_left[0]
-        if p.handle_left[1] > ymax:
-            ymax = p.handle_left[1]
-        if p.handle_left[1] < ymin:
-            ymin = p.handle_left[1]
+        if xmin_n < xmin:
+            xmin = xmin_n
+        if xmax_n > xmax:
+            xmax = xmax_n
+        if ymin_n < ymin:
+            ymin = ymin_n
+        if ymax_n > ymax:
+            ymax = ymax_n
+
+        height = obj.location[2]
+
+        if len(list_height) == 0:
+            list_height.append(obj)
+        else:
+            inserted = False
+            for i in range(len(list_height)):
+                if list_height[i].location[2] > height:
+                    list_height.insert(i, obj)
+                    break
+            if not inserted:
+                list_height.append(obj)
+
+print(list_height)
 
 svg_string = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
 svg_string += '<svg width="120px" height="120px" viewBox="0 0 256 315" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" preserveAspectRatio="xMidYMid">\n'
 
-
-print("minimum is :", xmin)
-print("maximum is :", xmax)
-
 handler = svg_handler((xmin, ymin), (xmax, ymax), 0.2, 100)
+path_set = {}
+index = 0
+for obj in list_height:
+    print("working with object: ", obj)
+    path_string = get_path_string(obj.data.splines, handler)
 
-path_string = ""
-layers = {}
-layer_hier = []
-amount_curves = len(curves)
+    color = obj.data.materials[0].diffuse_color
+    color_string = "rgb(" + str(int(255 * color[0])) + "," + str(int(255 * color[1])) + "," + str(int(255 * color[2])) + ")"
 
-# create list with all the relations
-# relation is if a curve is within another curve
-# when curve is outside other it will not be added
-for spline_index1 in range(amount_curves):
-    for spline_index2 in range(spline_index1 + 1,amount_curves,1):
-        if spline_in_spline(curves[spline_index1], curves[spline_index2]):
-            if curves[spline_index1] not in layers:
-                layers[curves[spline_index1]] = [curves[spline_index2]]
-            else:
-                layers[curves[spline_index1]].append(curves[spline_index2])
-
-        if spline_in_spline(curves[spline_index2], curves[spline_index1]):
-            if curves[spline_index2] not in layers:
-                layers[curves[spline_index2]] = [curves[spline_index1]]
-            else:
-                layers[curves[spline_index2]].append(curves[spline_index1])
+    svg_string += '<path id="line' + str(index) + '" d="' + path_string + '" fill="' + color_string + '" />\n'
+    index += 1
 
 
-# when a is in b and b in c, then a will also be in relation with c, remove that relation
-keys = list(layers.keys())
-for key in keys:
-    for spline in layers[key]:
-        if spline in keys:
-            for rem_spline in layers[spline]:
-                layers[key].remove(rem_spline)
-
-# find top layer
-
-not_visited_keys = list(curves)
-top_list = []
-while len(not_visited_keys) != 0:
-    top_key = not_visited_keys[0]
-    at_top = False
-
-    while not at_top:
-        new_key = in_other_key(layers, top_key)
-        if new_key is not None:
-            top_key = new_key
-        else:
-            at_top = True
-            top_list.append(top_key)
-            # descend and remove every key in relation with top
-            remove_list = [top_key]
-            prev_length = 0
-            start_index = 0
-            while len(remove_list) != prev_length:
-                prev_length = len(remove_list)
-                for i in range(start_index, len(remove_list), 1):
-                    if remove_list[i] in layers:
-                        remove_list.extend(layers[remove_list[i]])
-                    start_index = prev_length
-            for key in remove_list:
-                not_visited_keys.remove(key)
-
-
-for key in layers:
-    print(key.bezier_points[0].co)
-    for s in layers[key]:
-        print('/t', s.bezier_points[0].co)
-
-layer_hier.append(top_list)
-layer_index = 0
-while(len(layer_hier[layer_index]) != 0):
-    layer_hier.append([])
-    for key in layer_hier[layer_index]:
-        if key in layers:
-            layer_hier[layer_index + 1].extend(layers[key])
-    print(layer_hier[layer_index])
-    layer_index += 1
-
-inverted = True
-for layer in layer_hier:
-    inverted = not inverted
-    for spline in layer:
-        path_string += handler.curve_to_xml(spline.bezier_points, inverted)
-
-color = ob.data.materials["Material"].diffuse_color
-color_string = "rgb(" + str(int(255*color[0])) + "," + str(int(255*color[1]))+ "," + str(int(255*color[2])) + ")"
-
-print(path_string)
-svg_string += '<path id="lineAB" d="' + path_string + '" fill="' + color_string + '" />\n'
 svg_string += '</svg>'
 
 file = open("D:/gilles.svg","w")
