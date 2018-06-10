@@ -203,24 +203,40 @@ for key in keys:
                 layers[key].remove(rem_spline)
 
 # find top layer
-top_key = keys[0]
-at_top = False
-while not at_top:
-    new_key = in_other_key(layers, top_key)
-    if new_key is not None:
-        top_key = new_key
-    else:
-        at_top = True
+
+not_visited_keys = list(curves)
+top_list = []
+while len(not_visited_keys) != 0:
+    top_key = not_visited_keys[0]
+    at_top = False
+
+    while not at_top:
+        new_key = in_other_key(layers, top_key)
+        if new_key is not None:
+            top_key = new_key
+        else:
+            at_top = True
+            top_list.append(top_key)
+            # descend and remove every key in relation with top
+            remove_list = [top_key]
+            prev_length = 0
+            start_index = 0
+            while len(remove_list) != prev_length:
+                prev_length = len(remove_list)
+                for i in range(start_index, len(remove_list), 1):
+                    if remove_list[i] in layers:
+                        remove_list.extend(layers[remove_list[i]])
+                    start_index = prev_length
+            for key in remove_list:
+                not_visited_keys.remove(key)
+
 
 for key in layers:
     print(key.bezier_points[0].co)
     for s in layers[key]:
         print('/t', s.bezier_points[0].co)
 
-print('top key: ')
-print(top_key.bezier_points[0].co)
-
-layer_hier.append([top_key])
+layer_hier.append(top_list)
 layer_index = 0
 while(len(layer_hier[layer_index]) != 0):
     layer_hier.append([])
@@ -230,12 +246,17 @@ while(len(layer_hier[layer_index]) != 0):
     print(layer_hier[layer_index])
     layer_index += 1
 
+inverted = True
+for layer in layer_hier:
+    inverted = not inverted
+    for spline in layer:
+        path_string += handler.curve_to_xml(spline.bezier_points, inverted)
 
-
-print(layers)
+color = ob.data.materials["Material"].diffuse_color
+color_string = "rgb(" + str(int(255*color[0])) + "," + str(int(255*color[1]))+ "," + str(int(255*color[2])) + ")"
 
 print(path_string)
-svg_string += '<path id="lineAB" d="' + path_string + '" fill="red" />\n'
+svg_string += '<path id="lineAB" d="' + path_string + '" fill="' + color_string + '" />\n'
 svg_string += '</svg>'
 
 file = open("D:/gilles.svg","w")
