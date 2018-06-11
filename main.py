@@ -1,5 +1,6 @@
 import bpy
 import math
+import mathutils
 
 class svg_handler:
     def __init__(self, co_min, co_max, margin, min_size):
@@ -11,84 +12,98 @@ class svg_handler:
         self.x_raw_width = (co_max[0] - co_min[0])
         self.y_raw_width = (co_max[1] - co_min[1])
 
+        diff_x = co_max[0] - co_min[0]
+        diff_y = co_max[1] - co_min[1]
+
+        diff = max(diff_x, diff_y)
+
+        target = (1-margin) * min_size
+
+        scale = target/diff
+
+        mat_loc1 = mathutils.Matrix.Translation((-self.co_min[0], self.co_max[1], 0))
+        print(mat_loc1)
+        mat_scal = mathutils.Matrix.Scale(scale, 4)
+        mat_invert_y = mathutils.Matrix.Scale(-1, 4, (0, 1, 0))
+
         self.scalefactor = max(self.min_size / self.x_raw_width, self.min_size / self.y_raw_width)
 
-        self.x_svg_width_no_margin = self.x_raw_width * self.scalefactor
-        self.x_margin_width = self.x_svg_width_no_margin * (self.margin / 2)
-        self.x_svg_width = self.x_svg_width_no_margin + 2 * self.x_margin_width
+        if diff_x > diff_y:
+            self.width = min_size
+            self.height = int(min_size * (diff_y / diff_x))
+        else:
+            self.height = min_size
+            self.width = int(min_size * (diff_x / diff_y))
 
-        self.y_svg_width_no_margin = self.y_raw_width * self.scalefactor
-        self.y_margin_width = self.y_svg_width_no_margin * (self.margin / 2)
-        self.y_svg_width = self.y_svg_width_no_margin + 2 * self.y_margin_width
+        self.margin_x = (margin / 2) * self.width
+        self.margin_y = (margin / 2) * self.height
 
-    def get_x(self, x_co):
-        return (x_co - self.co_min[0]) * self.scalefactor + self.x_margin_width
+        mat_move_margin = mathutils.Matrix.Translation((self.margin_x, self.margin_y, 0))
 
-    def get_y(self, y_co):
-        y_loc = (y_co - self.co_min[1]) * self.scalefactor
-        return self.y_svg_width - y_loc + self.y_margin_width
+        self.mat = mat_move_margin * mat_scal * mat_loc1 * mat_invert_y
+    def get_height(self):
+        return self.height
 
-    def get_x_str(self, x_co):
-        return str(self.get_x(x_co))
+    def get_width(self):
+        return self.width
 
-    def get_y_str(self, y_co):
-        return str(self.get_y(y_co))
-
-    def curve_to_xml(self, curve, clockwise=True):
+    def curve_to_xml(self, curve, world_matrix, clockwise=True):
         path_string = ""
         amount_point = len(curve)
 
         for i in range(amount_point):
             if i == 0:
-                path_string += " M " + self.get_x_str(curve[0].co[0])
-                path_string += " " + self.get_y_str(curve[0].co[1])
+                start_co = self.mat * world_matrix * curve[0].co
+                path_string += " M " + str(start_co[0])
+                path_string += " " + str(start_co[1])
 
             if clockwise:
-                path_string += " C "
-                path_string += self.get_x_str(curve[i].handle_right[0])
-                path_string += " "
-                path_string += self.get_y_str(curve[i].handle_right[1])
-
-                path_string += ", "
-                path_string += self.get_x_str(curve[(i + 1) % amount_point].handle_left[0])
-                path_string += " "
-                path_string += self.get_y_str(curve[(i + 1) % amount_point].handle_left[1])
-
-                path_string += ", "
-                path_string += self.get_x_str(curve[(i + 1) % amount_point].co[0])
-                path_string += " "
-                path_string += self.get_y_str(curve[(i + 1) % amount_point].co[1])
+                current_handle = curve[i].handle_right
+                co_next = curve[(i + 1) % amount_point].co
+                co_next_handle = curve[(i + 1) % amount_point].handle_left
             else:
-                path_string += " C "
-                path_string += self.get_x_str(curve[-i].handle_left[0])
-                path_string += " "
-                path_string += self.get_y_str(curve[-i].handle_left[1])
+                current_handle = curve[-i].handle_left
+                co_next = curve[-1*(i + 1) % amount_point].co
+                co_next_handle = curve[-1*(i + 1) % amount_point].handle_right
 
-                path_string += ", "
-                path_string += self.get_x_str(curve[-1*(i + 1) % amount_point].handle_right[0])
-                path_string += " "
-                path_string += self.get_y_str(curve[-1*(i + 1) % amount_point].handle_right[1])
+            current_handle = self.mat * world_matrix * current_handle
+            co_next = self.mat * world_matrix * co_next
+            co_next_handle = self.mat * world_matrix * co_next_handle
 
-                path_string += ", "
-                path_string += self.get_x_str(curve[-1*(i + 1) % amount_point].co[0])
-                path_string += " "
-                path_string += self.get_y_str(curve[-1*(i + 1) % amount_point].co[1])
+            path_string += " C "
+            path_string += str(current_handle[0])
+            path_string += " "
+            path_string += str(current_handle[1])
+
+            path_string += ", "
+            path_string += str(co_next_handle[0])
+            path_string += " "
+            path_string += str(co_next_handle[1])
+
+            path_string += ", "
+            path_string += str(co_next[0])
+            path_string += " "
+            path_string += str(co_next[1])
+
         path_string += 'z'
         return path_string
 
+
 def in_other_key(search_dict, search_value):
     for key in search_dict:
-
         if search_value in search_dict[key]:
             return key
     return None
 
+
 def ccw(A,B,C):
     return (C[1]-A[1]) * (B[0]-A[0]) > (B[1]-A[1]) * (C[0]-A[0])
+
 
 # Return true if line segments AB and CD intersect
 def intersect(A,B,C,D):
     return ccw(A,C,D) != ccw(B,C,D) and ccw(A,B,C) != ccw(A,B,D)
+
 
 def get_point(value, index, P0, P1, P2, P3):
     return math.pow((1-value),3) * P0[index] + \
@@ -96,10 +111,10 @@ def get_point(value, index, P0, P1, P2, P3):
         3 * math.pow(value,2) * (1 - value) * P2[index] + \
         math.pow(value,3) * P3[index]
 
+
 def spline_in_spline(spline2, spline1):
     line_co_0 = [spline1.bezier_points[0].co[0], spline1.bezier_points[0].co[1]]
     line_co_1 = [line_co_0[0] + 2*xmax, line_co_0[1] + ymax]
-
 
     amount_intersection = 0
     amount_beziers = len(spline2.bezier_points)
@@ -117,52 +132,55 @@ def spline_in_spline(spline2, spline1):
     return amount_intersection % 2 != 0
 
 
-def get_co_extremes(curves):
+def get_co_extremes(obj):
+    curves = obj.data.splines
     xmax = -float("inf")
-    x_max_spline = curves[0]
 
     xmin = float("inf")
-    x_min_spline = curves[0]
 
     ymax = -float("inf")
-    ymax_spline = curves[0]
 
     ymin = float("inf")
-    ymin_spline = curves[0]
 
     # iterate over points of the curve's first spline
     for spline in curves:
         for p in spline.bezier_points:
-            if p.co[0] > xmax:
-                xmax = p.co[0]
-                x_max_spline = spline
-            if p.co[0] < xmin:
-                xmin = p.co[0]
+            co = obj.matrix_world * p.co
+            co_handle_left = obj.matrix_world * p.handle_left
+            co_handle_right = obj.matrix_world * p.handle_right
 
-            if p.handle_right[0] > xmax:
-                xmax = p.handle_right[0]
-                x_max_spline = spline
-            if p.handle_right[0] < xmin:
-                xmin = p.handle_right[0]
-            if p.handle_right[1] > ymax:
-                ymax = p.handle_right[1]
-            if p.handle_right[1] < ymin:
-                ymin = p.handle_right[1]
+            if co[0] > xmax:
+                xmax = co[0]
+            if co[0] < xmin:
+                xmin = co[0]
+            if co[1] > ymax:
+                ymax = co[1]
+            if co[1] < ymin:
+                ymin = co[1]
 
-            if p.handle_left[0] > xmax:
-                xmax = p.handle_left[0]
-                x_max_spline = spline
-            if p.handle_left[0] < xmin:
-                xmin = p.handle_left[0]
-            if p.handle_left[1] > ymax:
-                ymax = p.handle_left[1]
-            if p.handle_left[1] < ymin:
-                ymin = p.handle_left[1]
+            if co_handle_right[0] > xmax:
+                xmax = co_handle_right[0]
+            if co_handle_right[0] < xmin:
+                xmin = co_handle_right[0]
+            if co_handle_right[1] > ymax:
+                ymax = co_handle_right[1]
+            if co_handle_right[1] < ymin:
+                ymin = co_handle_right[1]
+
+            if co_handle_left[0] > xmax:
+                xmax = co_handle_left[0]
+            if co_handle_left[0] < xmin:
+                xmin = co_handle_left[0]
+            if co_handle_left[1] > ymax:
+                ymax = co_handle_left[1]
+            if co_handle_left[1] < ymin:
+                ymin = co_handle_left[1]
 
     return xmin, xmax, ymin, ymax
 
 
-def get_path_string(curves, handler):
+def get_path_string(obj, handler):
+    curves = obj.data.splines
     path_string = ""
     layers = {}
     layer_hier = []
@@ -172,6 +190,7 @@ def get_path_string(curves, handler):
     # when curve is outside other it will not be added
     for spline_index1 in range(amount_curves):
         for spline_index2 in range(spline_index1 + 1, amount_curves, 1):
+            # spline_in_spline doesn't care about the rotation, position and scaling from the object
             if spline_in_spline(curves[spline_index1], curves[spline_index2]):
                 if curves[spline_index1] not in layers:
                     layers[curves[spline_index1]] = [curves[spline_index2]]
@@ -232,11 +251,13 @@ def get_path_string(curves, handler):
     for layer in layer_hier:
         inverted = not inverted
         for spline in layer:
-            path_string += handler.curve_to_xml(spline.bezier_points, inverted)
+            path_string += handler.curve_to_xml(spline.bezier_points, obj.matrix_world, inverted)
 
     return path_string
 
-
+print("============================================")
+print("============= Start of program =============")
+print("============================================")
 
 objects = bpy.context.selected_objects# active object
 
@@ -252,7 +273,7 @@ list_height = []
 
 for obj in objects:
     if obj.type == 'CURVE':
-        xmin_n, xmax_n, ymin_n, ymax_n = get_co_extremes(obj.data.splines)
+        xmin_n, xmax_n, ymin_n, ymax_n = get_co_extremes(obj)
 
         if xmin_n < xmin:
             xmin = xmin_n
@@ -276,17 +297,24 @@ for obj in objects:
             if not inserted:
                 list_height.append(obj)
 
+print(xmin,xmax,ymin,ymax)
+
 print(list_height)
 
-svg_string = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
-svg_string += '<svg width="120px" height="120px" viewBox="0 0 256 315" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" preserveAspectRatio="xMidYMid">\n'
+handler = svg_handler((xmin, ymin), (xmax, ymax), 0, 500)
 
-handler = svg_handler((xmin, ymin), (xmax, ymax), 0.2, 100)
+width = handler.get_width()
+height = handler.get_height()
+
+svg_string = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
+svg_string += '<svg width="' + str(width) + '" height="' + str(height) + '" viewBox="0 0 ' + str(width) + ' ' + str(height) + '" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" preserveAspectRatio="xMidYMid">\n'
+
+
 path_set = {}
 index = 0
 for obj in list_height:
     print("working with object: ", obj)
-    path_string = get_path_string(obj.data.splines, handler)
+    path_string = get_path_string(obj, handler)
 
     color = obj.data.materials[0].diffuse_color
     color_string = "rgb(" + str(int(255 * color[0])) + "," + str(int(255 * color[1])) + "," + str(int(255 * color[2])) + ")"
