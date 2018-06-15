@@ -8,6 +8,25 @@
 import bpy
 import math
 import mathutils
+import os
+
+from bpy.props import (
+        StringProperty,
+        BoolProperty,
+        CollectionProperty,
+        EnumProperty,
+        FloatProperty,
+        )
+from bpy_extras.io_utils import (
+        ImportHelper,
+        ExportHelper,
+        orientation_helper_factory,
+        axis_conversion,
+        )
+from bpy.types import (
+        Operator,
+        OperatorFileListElement,
+        )
 
 class svg_handler:
     def __init__(self, co_min, co_max, margin, min_size):
@@ -95,7 +114,49 @@ class svg_handler:
         path_string += 'z'
         return path_string
 
+bl_info = {
+    "name": "SVG format",
+    "author": "Gilles Ballegeer",
+    "version": (0,0,1),
+    "blender": (2, 79, 0),
+    "location": "File > Export > Svg",
+    "warning": "",
+    "wiki_url": "",
+    "category": "Export"
+}
 
+
+class ExportSVG(Operator, ExportHelper):
+    bl_idname = "export.stl"
+    bl_label = "Export SVG"
+
+    filename_ext = ".svg"
+
+    def execute(self, context):
+        print(5)
+
+def menu_export(self, context):
+    default_path = os.path.splitext(bpy.data.filepath)[0] + ".stl"
+    self.layout.operator(ExportSVG.bl_idname, text="Svg (.svg)")
+
+
+
+def register():
+    bpy.utils.register_class(ExportSVG)
+
+    bpy.types.INFO_MT_file_export.append(menu_export)
+
+
+def unregister():
+    bpy.utils.register_class(ExportSVG)
+
+    bpy.types.INFO_MT_file_export.remove(menu_export)
+
+
+if __name__ == "__main__":
+    register()
+
+'''
 def in_other_key(search_dict, search_value):
     for key in search_dict:
         if search_value in search_dict[key]:
@@ -335,3 +396,4 @@ svg_string += '</svg>'
 file = open("D:/gilles.svg","w")
 file.write(svg_string)
 file.close()
+'''
