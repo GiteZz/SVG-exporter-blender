@@ -8,7 +8,10 @@
 import bpy
 import math
 import mathutils
+import svg_utils
 import os
+import importlib
+importlib.reload(svg_utils)
 
 from svg_utils import *
 
@@ -18,6 +21,7 @@ from bpy.props import (
         CollectionProperty,
         EnumProperty,
         FloatProperty,
+        IntProperty,
         )
 from bpy_extras.io_utils import (
         ImportHelper,
@@ -50,6 +54,17 @@ class ExportSVG(Operator, ExportHelper):
 
     filename_ext = ".svg"
 
+    margin = FloatProperty(
+        name="Margin",
+        min=0.0, max=1.0,
+        default=0.2,
+    )
+
+    size = IntProperty(name="Size",
+                       default=500,
+                       min=1,
+                       max=10000)
+
     def execute(self, context):
         keywords = self.as_keywords()
         print(keywords)
@@ -57,7 +72,7 @@ class ExportSVG(Operator, ExportHelper):
         objects = context.selected_objects  # active object
         xmin, xmax, ymin, ymax = get_co_extremes_mul_obj(objects)
         list_height = get_in_height_order(objects)
-        handler = svg_handler((xmin, ymin), (xmax, ymax), 0, 500)
+        handler = svg_handler((xmin, ymin), (xmax, ymax), self.margin, self.size)
         index = 0
         for obj in list_height:
             print("working with object: ", obj)

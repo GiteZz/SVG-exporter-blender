@@ -32,19 +32,35 @@ def spline_in_spline(spline2, spline1, co_max):
     line_co_1 = [line_co_0[0] + 2*xmax, line_co_0[1] + ymax]
 
     amount_intersection = 0
-    amount_beziers = len(spline2.bezier_points)
 
-    for curve_index in range(amount_beziers):
-        P0 = spline2.bezier_points[curve_index].co
-        P1 = spline2.bezier_points[curve_index].handle_right
-        P2 = spline2.bezier_points[(curve_index + 1) % amount_beziers].handle_left
-        P3 = spline2.bezier_points[(curve_index + 1) % amount_beziers].co
 
-        for i in range(10):
-            cob0 = (get_point(i / 10, 0, P0, P1, P2, P3), get_point(i / 10, 1, P0, P1, P2, P3))
-            cob1 = (get_point((i + 1) / 10, 0, P0, P1, P2, P3), get_point((i + 1) / 10, 1, P0, P1, P2, P3))
-            amount_intersection += intersect(line_co_0, line_co_1, cob0, cob1)
+    co_list = spline_to_co_list(spline2)
+
+    amount_co = len(co_list)
+
+    for co_index in range(amount_co):
+        cob0 = co_list[co_index]
+        cob1 = co_list[(co_index + 1) % amount_co]
+        amount_intersection += intersect(line_co_0, line_co_1, cob0, cob1)
     return amount_intersection % 2 != 0
+
+
+def spline_to_co_list(spline):
+    co_list = []
+    amount_beziers = len(spline.bezier_points)
+    for curve_index in range(amount_beziers):
+        co_list.append(spline.bezier_points[curve_index].co)
+        detail = 4
+
+        P0 = spline.bezier_points[curve_index].co
+        P1 = spline.bezier_points[curve_index].handle_right
+        P2 = spline.bezier_points[(curve_index + 1) % amount_beziers].handle_left
+        P3 = spline.bezier_points[(curve_index + 1) % amount_beziers].co
+
+        for i in range(1, detail, 1):
+            co_list.append([get_point(i / detail, 0, P0, P1, P2, P3), get_point(i / detail, 1, P0, P1, P2, P3)])
+
+    return co_list
 
 
 def get_co_extremes_mul_obj(objects):
