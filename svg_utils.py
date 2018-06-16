@@ -25,17 +25,19 @@ def get_point(value, index, P0, P1, P2, P3):
         math.pow(value,3) * P3[index]
 
 
-def spline_in_spline(spline2, spline1, co_max):
-    xmax = co_max[0]
-    ymax = co_max[1]
+def spline_in_spline(spline1, spline2, co_max):
     line_co_0 = [spline1.bezier_points[0].co[0], spline1.bezier_points[0].co[1]]
-    line_co_1 = [line_co_0[0] + 2*xmax, line_co_0[1] + ymax]
-
-    amount_intersection = 0
-
-
     co_list = spline_to_co_list(spline2)
 
+    return co_in_co_list(line_co_0, co_list, co_max)
+
+
+def co_in_co_list(co, co_list, co_max):
+    xmax = co_max[0]
+    ymax = co_max[1]
+    line_co_0 = [co[0], co[1]]
+    line_co_1 = [line_co_0[0] + 2 * xmax, line_co_0[1] + ymax]
+    amount_intersection = 0
     amount_co = len(co_list)
 
     for co_index in range(amount_co):
@@ -162,16 +164,17 @@ def get_path_string(obj, handler):
     # create list with all the relations
     # relation is if a curve is within another curve
     # when curve is outside other it will not be added
+    # spline is in array from key is its inside
     for spline_index1 in range(amount_curves):
         for spline_index2 in range(spline_index1 + 1, amount_curves, 1):
             # spline_in_spline doesn't care about the rotation, position and scaling from the object
-            if spline_in_spline(curves[spline_index1], curves[spline_index2], handler.co_max):
+            if spline_in_spline(curves[spline_index2], curves[spline_index1], handler.co_max):
                 if curves[spline_index1] not in layers:
                     layers[curves[spline_index1]] = [curves[spline_index2]]
                 else:
                     layers[curves[spline_index1]].append(curves[spline_index2])
 
-            if spline_in_spline(curves[spline_index2], curves[spline_index1], handler.co_max):
+            if spline_in_spline(curves[spline_index1], curves[spline_index2], handler.co_max):
                 if curves[spline_index2] not in layers:
                     layers[curves[spline_index2]] = [curves[spline_index1]]
                 else:
