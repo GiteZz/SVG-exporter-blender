@@ -71,25 +71,16 @@ class ExportSVG(Operator, ExportHelper):
 
         objects = context.selected_objects  # active object
         xmin, xmax, ymin, ymax = get_co_extremes_mul_obj(objects)
+
+        width, height, svg_matrix = get_width_height_transform((xmin, ymin), (xmax, ymax), self.margin, self.size)
         list_height = get_in_height_order(objects)
-        handler = svg_handler((xmin, ymin), (xmax, ymax), self.margin, self.size)
-        index = 0
+        xml_obj = xml_handler(svg_matrix, width, height)
+
         for obj in list_height:
             print("working with object: ", obj)
-            path_string = get_path_string(obj, handler)
+            xml_obj.add_object(obj)
 
-            color = obj.data.materials[0].diffuse_color
-            color_string = "rgb(" + str(int(255 * color[0])) + "," + str(int(255 * color[1])) + "," + str(
-                int(255 * color[2])) + ")"
-
-            handler.add_path(path_string, index, color=color_string)
-            index += 1
-
-        handler.terminate_svg()
-
-        file = open(keywords['filepath'], "w")
-        file.write(handler.get_xml())
-        file.close()
+        xml_obj.save(keywords['filepath'])
 
         return {'FINISHED'}
 

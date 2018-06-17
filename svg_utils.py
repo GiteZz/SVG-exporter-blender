@@ -1,6 +1,7 @@
 import mathutils
 import bpy
 import math
+import sys
 
 def in_other_key(search_dict, search_value):
     for key in search_dict:
@@ -25,18 +26,16 @@ def get_point(value, index, P0, P1, P2, P3):
         math.pow(value,3) * P3[index]
 
 
-def spline_in_spline(spline1, spline2, co_max):
+def spline_in_spline(spline1, spline2):
     line_co_0 = [spline1.bezier_points[0].co[0], spline1.bezier_points[0].co[1]]
     co_list = spline_to_co_list(spline2)
 
-    return co_in_co_list(line_co_0, co_list, co_max)
+    return co_in_co_list(line_co_0, co_list)
 
 
-def co_in_co_list(co, co_list, co_max):
-    xmax = co_max[0]
-    ymax = co_max[1]
+def co_in_co_list(co, co_list):
     line_co_0 = [co[0], co[1]]
-    line_co_1 = [line_co_0[0] + 2 * xmax, line_co_0[1] + ymax]
+    line_co_1 = [line_co_0[0] + 2 * 8, line_co_0[1] + 8]
     amount_intersection = 0
     amount_co = len(co_list)
 
@@ -155,7 +154,34 @@ def get_co_extremes_obj(obj):
     return xmin, xmax, ymin, ymax
 
 
-def get_path_string(obj, handler):
+def obj_to_xml(obj, svg_matrix):
+    path_string = get_path_string(obj, svg_matrix)
+    color_string = get_color_string(obj)
+    id_string = str(obj)[1:-1:].replace('"',"")
+
+    xml_string = '<path id="' + id_string + '" '
+    xml_string += 'd="' + path_string + '" '
+    xml_string += ' fill="' + color_string + '" '
+    xml_string += '/>'
+
+    return xml_string
+
+
+def get_color_string(obj):
+    try:
+        color = obj.data.materials[0].diffuse_color
+    except:
+        color = (0.5, 0.5, 0.5)
+
+    color_string = "rgb("
+    color_string += str(int(255 * color[0])) + ","
+    color_string += str(int(255 * color[1])) + ","
+    color_string += str(int(255 * color[2]))
+    color_string += ")"
+
+    return color_string
+
+def get_path_string(obj, svg_matrix):
     curves = obj.data.splines
     path_string = ""
     layers = {}
@@ -168,13 +194,13 @@ def get_path_string(obj, handler):
     for spline_index1 in range(amount_curves):
         for spline_index2 in range(spline_index1 + 1, amount_curves, 1):
             # spline_in_spline doesn't care about the rotation, position and scaling from the object
-            if spline_in_spline(curves[spline_index2], curves[spline_index1], handler.co_max):
+            if spline_in_spline(curves[spline_index2], curves[spline_index1]):
                 if curves[spline_index1] not in layers:
                     layers[curves[spline_index1]] = [curves[spline_index2]]
                 else:
                     layers[curves[spline_index1]].append(curves[spline_index2])
 
-            if spline_in_spline(curves[spline_index1], curves[spline_index2], handler.co_max):
+            if spline_in_spline(curves[spline_index1], curves[spline_index2]):
                 if curves[spline_index2] not in layers:
                     layers[curves[spline_index2]] = [curves[spline_index1]]
                 else:
@@ -228,118 +254,112 @@ def get_path_string(obj, handler):
     for layer in layer_hier:
         inverted = not inverted
         for spline in layer:
-            path_string += handler.curve_to_xml(spline.bezier_points, obj.matrix_world, inverted)
+            path_string += curve_to_svg_path(spline.bezier_points, obj.matrix_world, svg_matrix, inverted)
 
     return path_string
 
-class svg_handler:
-    def __init__(self, co_min, co_max, margin, min_size):
-        self.margin = margin
-        self.min_size = min_size
-        self.co_min = co_min
-        self.co_max = co_max
 
-        self.x_raw_width = (co_max[0] - co_min[0])
-        self.y_raw_width = (co_max[1] - co_min[1])
+def get_width_height_transform(co_min,co_max, margin, min_size):
+    margin = margin
+    min_size = min_size
+    co_min = co_min
+    co_max = co_max
 
-        diff_x = co_max[0] - co_min[0]
-        diff_y = co_max[1] - co_min[1]
+    diff_x = co_max[0] - co_min[0]
+    diff_y = co_max[1] - co_min[1]
 
-        diff = max(diff_x, diff_y)
+    diff = max(diff_x, diff_y)
 
-        target = (1-margin) * min_size
+    target = (1 - margin) * min_size
 
-        scale = target/diff
+    scale = target / diff
 
-        mat_loc1 = mathutils.Matrix.Translation((-self.co_min[0], self.co_max[1], 0))
-        print(mat_loc1)
-        mat_scal = mathutils.Matrix.Scale(scale, 4)
-        mat_invert_y = mathutils.Matrix.Scale(-1, 4, (0, 1, 0))
+    # move everything so that the minimum y and x are 0
+    mat_loc1 = mathutils.Matrix.Translation((-co_min[0], co_max[1], 0))
+    # scale everything so that max dimension will be between the margins of min_size
+    mat_scal = mathutils.Matrix.Scale(scale, 4)
+    # svg's y axis is inverted
+    mat_invert_y = mathutils.Matrix.Scale(-1, 4, (0, 1, 0))
 
-        self.scalefactor = max(self.min_size / self.x_raw_width, self.min_size / self.y_raw_width)
+    if diff_x > diff_y:
+        width = min_size
+        height = int(min_size * (diff_y / diff_x))
+    else:
+        height = min_size
+        width = int(min_size * (diff_x / diff_y))
+    
+    # margin is total margin, so left + right
+    margin_x = (margin / 2) * width
+    margin_y = (margin / 2) * height
 
-        if diff_x > diff_y:
-            self.width = min_size
-            self.height = int(min_size * (diff_y / diff_x))
+    mat_move_margin = mathutils.Matrix.Translation((margin_x, margin_y, 0))
+
+    svg_matrix = mat_move_margin * mat_scal * mat_loc1 * mat_invert_y
+
+    return width, height, svg_matrix
+
+
+def curve_to_svg_path(curve, world_matrix, svg_matrix, clockwise=True):
+    path_string = ""
+    amount_point = len(curve)
+    
+    trans_matrix = svg_matrix * world_matrix
+    
+    for i in range(amount_point):
+        if i == 0:
+            start_co = trans_matrix * curve[0].co
+            path_string += " M " + str(start_co[0])
+            path_string += " " + str(start_co[1])
+
+        if clockwise:
+            current_handle = curve[i].handle_right
+            co_next = curve[(i + 1) % amount_point].co
+            co_next_handle = curve[(i + 1) % amount_point].handle_left
         else:
-            self.height = min_size
-            self.width = int(min_size * (diff_x / diff_y))
+            current_handle = curve[-i].handle_left
+            co_next = curve[-1*(i + 1) % amount_point].co
+            co_next_handle = curve[-1*(i + 1) % amount_point].handle_right
 
-        self.margin_x = (margin / 2) * self.width
-        self.margin_y = (margin / 2) * self.height
+        current_handle = trans_matrix * current_handle
+        co_next = trans_matrix * co_next
+        co_next_handle = trans_matrix * co_next_handle
 
-        mat_move_margin = mathutils.Matrix.Translation((self.margin_x, self.margin_y, 0))
+        path_string += " C "
+        path_string += co_to_string_svg(current_handle)
 
-        self.mat = mat_move_margin * mat_scal * mat_loc1 * mat_invert_y
+        path_string += ", "
+        path_string += co_to_string_svg(co_next_handle)
 
+        path_string += ", "
+        path_string += co_to_string_svg(co_next)
+
+    path_string += 'z'
+    return path_string
+
+
+def co_to_string_svg(co):
+    return str(co[0]) + " " + str(co[1])
+
+
+class xml_handler:
+    def __init__(self, svg_transfrom, width, height):
         self.xml = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
-
-        self.xml += '<svg width="' + str(self.width) + '" '
-        self.xml += 'height="' + str(self.height) + '" '
-        self.xml += 'viewBox="0 0 ' + str(self.width) + ' ' + str(self.height) + '" '
+        self.xml += '<svg width="' + str(width) + '" '
+        self.xml += 'height="' + str(height) + '" '
+        self.xml += 'viewBox="0 0 ' + str(width) + ' ' + str(height) + '" '
         self.xml += 'version="1.1" '
         self.xml += 'xmlns="http://www.w3.org/2000/svg" '
         self.xml += 'xmlns:xlink="http://www.w3.org/1999/xlink" '
-        self.xml += 'preserveAspectRatio="xMidYMid">\n'
+        self.xml += 'preserveAspectRatio="xMidYMid">'
 
-        self.terminated = False
+        self.svg_transform = svg_transfrom
 
+    def add_object(self, obj):
+        self.xml += "\n"
+        self.xml += obj_to_xml(obj, self.svg_transform)
 
-    def add_path(self, path_string, id, color="rgb(255,0,0)"):
-        xml_string = '<path id="' + str(id) + '" '
-        xml_string += 'd="' + path_string + '" '
-        xml_string += ' fill="' + color + '" '
-        xml_string += '/> \n'
-
-        self.xml += xml_string
-
-    def terminate_svg(self):
-        if not self.terminated:
-            self.xml += '</svg>'
-        self.terminated = True
-
-    def get_xml(self):
-        if not self.terminated:
-            self.terminate_svg()
-        return self.xml
-
-    def curve_to_xml(self, curve, world_matrix, clockwise=True):
-        path_string = ""
-        amount_point = len(curve)
-
-        for i in range(amount_point):
-            if i == 0:
-                start_co = self.mat * world_matrix * curve[0].co
-                path_string += " M " + str(start_co[0])
-                path_string += " " + str(start_co[1])
-
-            if clockwise:
-                current_handle = curve[i].handle_right
-                co_next = curve[(i + 1) % amount_point].co
-                co_next_handle = curve[(i + 1) % amount_point].handle_left
-            else:
-                current_handle = curve[-i].handle_left
-                co_next = curve[-1*(i + 1) % amount_point].co
-                co_next_handle = curve[-1*(i + 1) % amount_point].handle_right
-
-            current_handle = self.mat * world_matrix * current_handle
-            co_next = self.mat * world_matrix * co_next
-            co_next_handle = self.mat * world_matrix * co_next_handle
-
-            path_string += " C "
-            path_string += str(current_handle[0])
-            path_string += " "
-            path_string += str(current_handle[1])
-
-            path_string += ", "
-            path_string += str(co_next_handle[0])
-            path_string += " "
-            path_string += str(co_next_handle[1])
-
-            path_string += ", "
-            path_string += str(co_next[0])
-            path_string += " "
-            path_string += str(co_next[1])
-
-        path_string += 'z'
-        return path_string
+    def save(self, location):
+        self.xml += '\n</svg>'
+        file = open(location, "w")
+        file.write(self.xml)
+        file.close()
