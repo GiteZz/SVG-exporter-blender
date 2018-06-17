@@ -1,7 +1,6 @@
 import mathutils
 import bpy
 import math
-import sys
 
 def in_other_key(search_dict, search_value):
     for key in search_dict:
@@ -75,16 +74,18 @@ def get_co_extremes_mul_obj(objects):
 
     for obj in objects:
         if obj.type == 'CURVE':
-            xmin_n, xmax_n, ymin_n, ymax_n = get_co_extremes_obj(obj)
+            xmin_n, xmax_n, ymin_n, ymax_n = get_co_extremes_curve(obj)
+        else:
+            xmin_n, xmax_n, ymin_n, ymax_n = get_co_extremes_mesh(obj)
 
-            if xmin_n < xmin:
-                xmin = xmin_n
-            if xmax_n > xmax:
-                xmax = xmax_n
-            if ymin_n < ymin:
-                ymin = ymin_n
-            if ymax_n > ymax:
-                ymax = ymax_n
+        if xmin_n < xmin:
+            xmin = xmin_n
+        if xmax_n > xmax:
+            xmax = xmax_n
+        if ymin_n < ymin:
+            ymin = ymin_n
+        if ymax_n > ymax:
+            ymax = ymax_n
 
     return xmin, xmax, ymin, ymax
 
@@ -101,24 +102,41 @@ def get_in_height_order(objects):
             for i in range(len(list_height)):
                 if list_height[i].location[2] > height:
                     list_height.insert(i, obj)
+                    inserted = True
                     break
             if not inserted:
                 list_height.append(obj)
     return list_height
 
 
-def get_co_extremes_obj(obj):
-    curves = obj.data.splines
+def get_co_extremes_mesh(obj):
     xmax = -float("inf")
-
     xmin = float("inf")
-
     ymax = -float("inf")
+    ymin = float("inf")
 
+    for verts in obj.data.vertices:
+        if verts.co[0] > xmax:
+            xmax = verts.co[0]
+        if verts.co[0] < xmin:
+            xmin = verts.co[0]
+
+        if verts.co[1] > ymax:
+            ymax = verts.co[1]
+        if verts.co[1] < ymin:
+            ymin = verts.co[1]
+
+    return xmin, xmax, ymin, ymax
+
+
+def get_co_extremes_curve(obj):
+    xmax = -float("inf")
+    xmin = float("inf")
+    ymax = -float("inf")
     ymin = float("inf")
 
     # iterate over points of the curve's first spline
-    for spline in curves:
+    for spline in obj.data.splines:
         for p in spline.bezier_points:
             co = obj.matrix_world * p.co
             co_handle_left = obj.matrix_world * p.handle_left
@@ -181,30 +199,29 @@ def get_color_string(obj):
 
     return color_string
 
-def get_path_string(obj, svg_matrix):
-    curves = obj.data.splines
-    path_string = ""
+def get_layer_relation(co_list):
     layers = {}
     layer_hier = []
-    amount_curves = len(curves)
-    # create list with all the relations
-    # relation is if a curve is within another curve
-    # when curve is outside other it will not be added
-    # spline is in array from key is its inside
-    for spline_index1 in range(amount_curves):
-        for spline_index2 in range(spline_index1 + 1, amount_curves, 1):
-            # spline_in_spline doesn't care about the rotation, position and scaling from the object
-            if spline_in_spline(curves[spline_index2], curves[spline_index1]):
-                if curves[spline_index1] not in layers:
-                    layers[curves[spline_index1]] = [curves[spline_index2]]
+    amount_co = len(co_list)
+    for co_list_index1 in range(amount_co):
+        for co_list_index2 in range(co_list_index1 + 1, amount_co, 1):
+            # 2 in 1
+            if co_in_co_list(co_list[co_list_index2][0], co_list[co_list_index1]):
+                if co_list_index1 not in layers:
+                    layers[co_list_index1] = [co_list_index2]
                 else:
-                    layers[curves[spline_index1]].append(curves[spline_index2])
+                    layers[co_list_index1].append(co_list_index2)
+            # 1 in 2
+            if co_in_co_list(co_list[co_list_index1][0], co_list[co_list_index2]):
+                if co_list_index2 not in layers:
+                    layers[co_list_index2] = [co_list_index1]
+                else:
+                    layers[co_list_index2].append(co_list_index1)
 
-            if spline_in_spline(curves[spline_index1], curves[spline_index2]):
-                if curves[spline_index2] not in layers:
-                    layers[curves[spline_index2]] = [curves[spline_index1]]
-                else:
-                    layers[curves[spline_index2]].append(curves[spline_index1])
+    for key in layers:
+        print(key)
+        for co in layers[key]:
+            print("   ", co)
 
     # when a is in b and b in c, then a will also be in relation with c, remove that relation
     keys = list(layers.keys())
@@ -215,7 +232,7 @@ def get_path_string(obj, svg_matrix):
                     layers[key].remove(rem_spline)
 
     # find top layers
-    not_visited_keys = list(curves)
+    not_visited_keys = list(range(len(co_list)))
     top_list = []
     while len(not_visited_keys) != 0:
         top_key = not_visited_keys[0]
@@ -243,18 +260,148 @@ def get_path_string(obj, svg_matrix):
 
     layer_hier.append(top_list)
     layer_index = 0
-    while (len(layer_hier[layer_index]) != 0):
+    while len(layer_hier[layer_index]) != 0:
         layer_hier.append([])
         for key in layer_hier[layer_index]:
             if key in layers:
                 layer_hier[layer_index + 1].extend(layers[key])
         layer_index += 1
 
+    return layer_hier
+
+
+def normalize_vector(vector):
+    # print(vector)
+    length = math.sqrt(math.pow(vector[0], 2) + math.pow(vector[1], 2))
+    # print("length: %d" % length)
+    return [vector[0]/length, vector[1]/length]
+
+
+def get_direction(co1, co2, normalize=False):
+    dx = co1[0] - co2[0]
+    dy = co1[1] - co2[1]
+    if not normalize:
+        return [dx,dy]
+    else:
+        return normalize_vector([dx,dy])
+
+
+def get_shared_vertex(edge1, edge2):
+    if edge1[0] == edge2[0]:
+        return edge1[0]
+    if edge1[0] == edge2[1]:
+        return edge1[0]
+    return edge1[1]
+
+
+def mesh_to_co_list(obj):
+    # goes trough all the face and save the connected edges, if an edge only has one face then it is an outside edge
+    facedict = {}
+    for f in obj.data.polygons:
+        for e in f.edge_keys:
+            if e in facedict:
+                facedict[e] += 1
+            else:
+                facedict[e] = 1
+    edges = []
+    for e in facedict:
+        if facedict[e] == 1:
+            print(e)
+            edges.append(e)
+
+    # create the individual loops from all the outside edges
+    start_edge = edges.pop(0)
+    current_start_vert = start_edge[0]
+    current_end_vert = start_edge[1]
+    edge_list = [[start_edge]]
+    edge_index = 0
+    new_list = False
+    while len(edges) != 0:
+        for e in edges:
+            if e[0] == current_start_vert:
+                edge_list[edge_index].append(e)
+                edges.remove(e)
+                if e[1] == current_end_vert:
+                    new_list = True
+                else:
+                    current_start_vert = e[1]
+                break
+            elif e[1] == current_start_vert:
+                edge_list[edge_index].append(e)
+
+                edges.remove(e)
+                if e[0] == current_end_vert:
+                    new_list = True
+                else:
+                    current_start_vert = e[0]
+                break
+
+            if new_list:
+                if len(edges) > 0:
+                    start_edge = edges.pop(0)
+                    current_start_vert = start_edge[0]
+                    current_end_vert = start_edge[1]
+                    edge_list.append([start_edge])
+                    edge_index += 1
+                    new_list = False
+                break
+
+    # create the coordinate list from the edge list, goes trough the last and takes the common vertex
+    co_list = [[] for i in range(len(edge_list))]
+    for loop_index in range(len(edge_list)):
+        for edge_index in range(-1, len(edge_list[loop_index]) - 1, 1):
+            shared_v = get_shared_vertex(edge_list[loop_index][edge_index], edge_list[loop_index][edge_index + 1])
+            co_list[loop_index].append(obj.data.vertices[shared_v].co)
+
+    # set loop orientation the same for every loop
+    for loop_index in range(len(co_list)):
+        dir1 = get_direction(co_list[loop_index][1], co_list[loop_index][0], normalize=True)[1]
+        dir2 = get_direction(co_list[loop_index][-1], co_list[loop_index][0], normalize=True)[1]
+
+        if dir2 > dir1:
+            co_list[loop_index] = co_list[loop_index][::-1]
+
+    return co_list
+
+
+def loop_to_svg_path(loop, matrix_world, svg_matrix, inverted=False):
+    transform_matrix = svg_matrix * matrix_world
+    path_string = ""
+    for co_index in range(len(loop)):
+        if co_index == 0:
+            path_string += " M"
+        else:
+            path_string += " L"
+
+        if inverted:
+            co = loop[len(loop) - 1 - co_index]
+        else:
+            co = loop[co_index]
+
+        co = transform_matrix * co
+        path_string += co_to_string_svg(co)
+
+    path_string += "Z"
+    return path_string
+
+
+def get_path_string(obj, svg_matrix):
+    if obj.type == 'CURVE':
+        co_list = [spline_to_co_list(curve) for curve in obj.data.splines]
+    else:
+        co_list = mesh_to_co_list(obj)
+
+    layer_hier = get_layer_relation(co_list)
+    path_string = ""
+
     inverted = True
     for layer in layer_hier:
         inverted = not inverted
-        for spline in layer:
-            path_string += curve_to_svg_path(spline.bezier_points, obj.matrix_world, svg_matrix, inverted)
+        for loop_index in layer:
+            if obj.type == 'CURVE':
+                path_string += curve_to_svg_path(obj.data.splines[loop_index].bezier_points, obj.matrix_world, svg_matrix, inverted)
+            else:
+                path_string += loop_to_svg_path(co_list[loop_index], obj.matrix_world, svg_matrix, inverted)
 
     return path_string
 

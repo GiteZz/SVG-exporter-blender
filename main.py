@@ -72,8 +72,11 @@ class ExportSVG(Operator, ExportHelper):
         objects = context.selected_objects  # active object
         xmin, xmax, ymin, ymax = get_co_extremes_mul_obj(objects)
 
+        print("xmin: ", xmin, ", xmax: ", xmax, ", ymin: ", ymin, ", ymax: ", ymax)
+
         width, height, svg_matrix = get_width_height_transform((xmin, ymin), (xmax, ymax), self.margin, self.size)
         list_height = get_in_height_order(objects)
+        print(list_height)
         xml_obj = xml_handler(svg_matrix, width, height)
 
         for obj in list_height:
