@@ -13,12 +13,17 @@ def ccw(A,B,C):
     return (C[1]-A[1]) * (B[0]-A[0]) > (B[1]-A[1]) * (C[0]-A[0])
 
 
-# Return true if line segments AB and CD intersect
 def intersect(A,B,C,D):
+    """Returns if the line from A to B collides with the line from C to D"""
     return ccw(A,C,D) != ccw(B,C,D) and ccw(A,B,C) != ccw(A,B,D)
 
 
 def get_point(value, index, P0, P1, P2, P3):
+    """This is the definition of a bezier curve with parameters P0 -> P3.
+
+    The index decides if the function returns x or y (0 for x, 1 for y).
+    The value is the t in the formula of a bezier curve, goes from 0 to 1
+    """
     return math.pow((1-value),3) * P0[index] + \
         3 * value * math.pow((1-value), 2) * P1[index] + \
         3 * math.pow(value,2) * (1 - value) * P2[index] + \
@@ -33,6 +38,12 @@ def spline_in_spline(spline1, spline2):
 
 
 def co_in_co_list(co, co_list):
+    """Determines is a coordinate is included in the polygon created by the co_list.
+
+    Creates a line from the co to a location far away from the coordinates in the co_list,
+    the function loops trough the edges in de co_list (co_list[i] and co_list[i + 1] form an edge).
+    If there's a collision it will be counted, uneven amount means the co is in the polygon.
+    """
     line_co_0 = [co[0], co[1]]
     line_co_1 = [line_co_0[0] + 2 * 8, line_co_0[1] + 8]
     amount_intersection = 0
@@ -46,6 +57,7 @@ def co_in_co_list(co, co_list):
 
 
 def spline_to_co_list(spline):
+    """Takes a blender curve and approximates it with discrete points."""
     co_list = []
     amount_beziers = len(spline.bezier_points)
     for curve_index in range(amount_beziers):
@@ -64,6 +76,7 @@ def spline_to_co_list(spline):
 
 
 def get_co_extremes_mul_obj(objects):
+    """Get the maximum in the x and y direction from multiple objects"""
     xmax = -float("inf")
 
     xmin = float("inf")
@@ -91,6 +104,7 @@ def get_co_extremes_mul_obj(objects):
 
 
 def get_in_height_order(objects):
+    """Sorts objects by their z coordinate"""
     list_height = []
     for obj in objects:
         height = obj.location[2]
@@ -110,6 +124,7 @@ def get_in_height_order(objects):
 
 
 def get_co_extremes_mesh(obj):
+    """Get the maximum x and y coordinate from a mesh"""
     xmax = -float("inf")
     xmin = float("inf")
     ymax = -float("inf")
@@ -130,6 +145,7 @@ def get_co_extremes_mesh(obj):
 
 
 def get_co_extremes_curve(obj):
+    """Get the maximum x and y coordinate from a curve, takes the handles into account."""
     xmax = -float("inf")
     xmin = float("inf")
     ymax = -float("inf")
@@ -173,6 +189,7 @@ def get_co_extremes_curve(obj):
 
 
 def obj_to_xml(obj, svg_matrix):
+    """Create a svg path based on a blender object."""
     path_string = get_path_string(obj, svg_matrix)
     color_string = get_color_string(obj)
     id_string = str(obj)[1:-1:].replace('"',"")
@@ -186,6 +203,10 @@ def obj_to_xml(obj, svg_matrix):
 
 
 def get_color_string(obj):
+    """Tries to get the viewport color of the blender object
+
+    Takes the material from the viewport, if the material is not defined then it will choose a grey color.
+    """
     try:
         color = obj.data.materials[0].diffuse_color
     except:
@@ -200,6 +221,14 @@ def get_color_string(obj):
     return color_string
 
 def get_layer_relation(co_list):
+    """Gives a layer hierarchy based on the co_list
+
+    This function first creates a dict with all the relations. A relation is if a loop is in another.
+    So if loop a is in loop b, b will be added as key with a as value (in an array). When the dict is
+    constructed all the redundant relations will be removed. If A is in B and B in C the relation from
+    C with A will be removed. After that the outer most layers will be searched. From the top layers
+    down, a hierarchy will be created.
+    """
     layers = {}
     layer_hier = []
     amount_co = len(co_list)
@@ -271,6 +300,7 @@ def get_layer_relation(co_list):
 
 
 def normalize_vector(vector):
+    """Normalizes the vector so that the length will be 1."""
     # print(vector)
     length = math.sqrt(math.pow(vector[0], 2) + math.pow(vector[1], 2))
     # print("length: %d" % length)
@@ -278,6 +308,7 @@ def normalize_vector(vector):
 
 
 def get_direction(co1, co2, normalize=False):
+    """Get the directon of the edge thate co1 and co2 create"""
     dx = co1[0] - co2[0]
     dy = co1[1] - co2[1]
     if not normalize:
@@ -287,6 +318,10 @@ def get_direction(co1, co2, normalize=False):
 
 
 def get_shared_vertex(edge1, edge2):
+    """Gives the shared vertex from two edges.
+
+    Doesn't give an error when there is no shared edge.
+    """
     if edge1[0] == edge2[0]:
         return edge1[0]
     if edge1[0] == edge2[1]:
@@ -295,6 +330,12 @@ def get_shared_vertex(edge1, edge2):
 
 
 def mesh_to_co_list(obj):
+    """Gives a list with loops in the mesh
+
+    This function will return all the edges that are on the outside of the mesh,
+    with all the same loop direction.
+    """
+
     # goes trough all the face and save the connected edges, if an edge only has one face then it is an outside edge
     facedict = {}
     for f in obj.data.polygons:
@@ -365,6 +406,7 @@ def mesh_to_co_list(obj):
 
 
 def loop_to_svg_path(loop, matrix_world, svg_matrix, inverted=False):
+    """Takes loop(co_list) and converts it into a svg path"""
     transform_matrix = svg_matrix * matrix_world
     path_string = ""
     for co_index in range(len(loop)):
@@ -386,6 +428,7 @@ def loop_to_svg_path(loop, matrix_world, svg_matrix, inverted=False):
 
 
 def get_path_string(obj, svg_matrix):
+    """Converts the object to an svg path"""
     if obj.type == 'CURVE':
         co_list = [spline_to_co_list(curve) for curve in obj.data.splines]
     else:
@@ -406,9 +449,17 @@ def get_path_string(obj, svg_matrix):
     return path_string
 
 
-def get_width_height_transform(co_min,co_max, margin, min_size):
+def get_width_height_transform(co_min, co_max, margin, des_size):
+    """Calculates the width and height based on the min_size and the coordinates of the objects.
+
+    Based on the difference between the min coordinates and the max it will decide which
+    direction will be the desired and which one will be smaller. The margin is the total margin,
+    a margin of .5 will have a whitespace of 0.25 left and right. This function also return
+    the svg_matrix this is the transformation matrix in order to set the coordinates
+    in order to fit in the svg viewport
+    """
     margin = margin
-    min_size = min_size
+    des_size = des_size
     co_min = co_min
     co_max = co_max
 
@@ -417,7 +468,7 @@ def get_width_height_transform(co_min,co_max, margin, min_size):
 
     diff = max(diff_x, diff_y)
 
-    target = (1 - margin) * min_size
+    target = (1 - margin) * des_size
 
     scale = target / diff
 
@@ -429,11 +480,11 @@ def get_width_height_transform(co_min,co_max, margin, min_size):
     mat_invert_y = mathutils.Matrix.Scale(-1, 4, (0, 1, 0))
 
     if diff_x > diff_y:
-        width = min_size
-        height = int(min_size * (diff_y / diff_x))
+        width = des_size
+        height = int(des_size * (diff_y / diff_x))
     else:
-        height = min_size
-        width = int(min_size * (diff_x / diff_y))
+        height = des_size
+        width = int(des_size * (diff_x / diff_y))
     
     # margin is total margin, so left + right
     margin_x = (margin / 2) * width
@@ -447,6 +498,7 @@ def get_width_height_transform(co_min,co_max, margin, min_size):
 
 
 def curve_to_svg_path(curve, world_matrix, svg_matrix, clockwise=True):
+    """Takes a curve and convert it into a svg path"""
     path_string = ""
     amount_point = len(curve)
     
@@ -485,10 +537,12 @@ def curve_to_svg_path(curve, world_matrix, svg_matrix, clockwise=True):
 
 
 def co_to_string_svg(co):
+    """Make a coordinate string for svg from a coordinate"""
     return str(co[0]) + " " + str(co[1])
 
 
 class xml_handler:
+    """This class helps with building the xml code"""
     def __init__(self, svg_transfrom, width, height):
         self.xml = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
         self.xml += '<svg width="' + str(width) + '" '

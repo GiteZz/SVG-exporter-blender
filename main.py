@@ -6,34 +6,22 @@
 # ----------------------------------------------------------------------------
 
 import bpy
-import math
-import mathutils
 import svg_utils
 import os
 import importlib
 importlib.reload(svg_utils)
 
-from svg_utils import *
-
+from svg_utils import get_co_extremes_mul_obj, get_width_height_transform, get_in_height_order, xml_handler
 from bpy.props import (
-        StringProperty,
-        BoolProperty,
-        CollectionProperty,
-        EnumProperty,
         FloatProperty,
         IntProperty,
         )
 from bpy_extras.io_utils import (
-        ImportHelper,
         ExportHelper,
-        orientation_helper_factory,
-        axis_conversion,
         )
 from bpy.types import (
         Operator,
-        OperatorFileListElement,
         )
-
 
 
 bl_info = {
@@ -69,10 +57,8 @@ class ExportSVG(Operator, ExportHelper):
         keywords = self.as_keywords()
         print(keywords)
 
-        objects = context.selected_objects  # active object
+        objects = context.selected_objects
         xmin, xmax, ymin, ymax = get_co_extremes_mul_obj(objects)
-
-        print("xmin: ", xmin, ", xmax: ", xmax, ", ymin: ", ymin, ", ymax: ", ymax)
 
         width, height, svg_matrix = get_width_height_transform((xmin, ymin), (xmax, ymax), self.margin, self.size)
         list_height = get_in_height_order(objects)
@@ -87,14 +73,13 @@ class ExportSVG(Operator, ExportHelper):
 
         return {'FINISHED'}
 
+
 def menu_export(self, context):
-    default_path = os.path.splitext(bpy.data.filepath)[0] + ".stl"
     self.layout.operator(ExportSVG.bl_idname, text="Svg (.svg)")
 
 
 def register():
     bpy.utils.register_class(ExportSVG)
-
     bpy.types.INFO_MT_file_export.append(menu_export)
 
 
