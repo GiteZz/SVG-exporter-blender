@@ -11,16 +11,23 @@ import os
 import importlib
 importlib.reload(svg_utils)
 
-from svg_utils import get_co_extremes_mul_obj, get_width_height_transform, get_in_height_order, xml_handler
+from svg_utils import (
+        get_co_extremes_mul_obj,
+        get_width_height_transform,
+        get_in_height_order,
+        xml_handler)
+
 from bpy.props import (
         FloatProperty,
-        IntProperty,
+        IntProperty
         )
+
 from bpy_extras.io_utils import (
-        ExportHelper,
+        ExportHelper
         )
+
 from bpy.types import (
-        Operator,
+        Operator
         )
 
 
@@ -75,6 +82,7 @@ class ExportSVG(Operator, ExportHelper):
 
 
 def menu_export(self, context):
+    default_path = os.path.splitext(bpy.data.filepath)[0] + ".stl"
     self.layout.operator(ExportSVG.bl_idname, text="Svg (.svg)")
 
 

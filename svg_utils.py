@@ -2,6 +2,7 @@ import mathutils
 import bpy
 import math
 
+
 def in_other_key(search_dict, search_value):
     for key in search_dict:
         if search_value in search_dict[key]:
@@ -130,16 +131,17 @@ def get_co_extremes_mesh(obj):
     ymax = -float("inf")
     ymin = float("inf")
 
-    for verts in obj.data.vertices:
-        if verts.co[0] > xmax:
-            xmax = verts.co[0]
-        if verts.co[0] < xmin:
-            xmin = verts.co[0]
+    for vert in obj.data.vertices:
+        vert_trans = obj.matrix_world * vert.co
+        if vert_trans[0] > xmax:
+            xmax = vert_trans[0]
+        if vert_trans[0] < xmin:
+            xmin = vert_trans[0]
 
-        if verts.co[1] > ymax:
-            ymax = verts.co[1]
-        if verts.co[1] < ymin:
-            ymin = verts.co[1]
+        if vert_trans[1] > ymax:
+            ymax = vert_trans[1]
+        if vert_trans[1] < ymin:
+            ymin = vert_trans[1]
 
     return xmin, xmax, ymin, ymax
 
@@ -190,16 +192,52 @@ def get_co_extremes_curve(obj):
 
 def obj_to_xml(obj, svg_matrix):
     """Create a svg path based on a blender object."""
-    path_string = get_path_string(obj, svg_matrix)
     color_string = get_color_string(obj)
+    if obj.type == 'CURVE' and obj.data.dimensions == '3D' or \
+        obj.type == 'MESH' and len(obj.data.polygons) == 0:
+        print("empty mesh")
+        path_string = get_path_string_empty(obj, svg_matrix)
+        fill_string = ' fill="none" stroke="' + color_string + '"'
+    else:
+        print("full mesh")
+        path_string = get_path_string_full(obj, svg_matrix)
+        fill_string = ' fill="' + color_string + '" '
+
     id_string = str(obj)[1:-1:].replace('"',"")
 
     xml_string = '<path id="' + id_string + '" '
     xml_string += 'd="' + path_string + '" '
-    xml_string += ' fill="' + color_string + '" '
+    xml_string += fill_string
     xml_string += '/>'
 
     return xml_string
+
+def get_path_string_empty(obj, svg_matrix):
+    path_string = ""
+    if obj.type == 'CURVE':
+        for spline in obj.data.splines:
+            path_string += curve_to_svg_path(spline.bezier_points, obj.matrix_world, svg_matrix)
+    else:
+        verts = obj.data.vertices
+        for edge in obj.data.edge_keys:
+            print(edge)
+            path_string += edge_svg_path([verts[edge[0]].co, verts[edge[1]].co], obj.matrix_world, svg_matrix)
+    return path_string
+
+
+def edge_svg_path(edge, world_matrix, svg_matrix):
+    print(world_matrix)
+    print(svg_matrix)
+    trans_matrix = svg_matrix * world_matrix
+    co_n1 = trans_matrix * edge[0]
+    co_n2 = trans_matrix * edge[1]
+    print("from: ", edge, " to ", co_n1, " , " , co_n2)
+    path = " M "
+    path += co_to_string_svg(trans_matrix * edge[0])
+    path += " L "
+    path += co_to_string_svg(trans_matrix * edge[1])
+    path += " z"
+    return path
 
 
 def get_color_string(obj):
@@ -427,7 +465,7 @@ def loop_to_svg_path(loop, matrix_world, svg_matrix, inverted=False):
     return path_string
 
 
-def get_path_string(obj, svg_matrix):
+def get_path_string_full(obj, svg_matrix):
     """Converts the object to an svg path"""
     if obj.type == 'CURVE':
         co_list = [spline_to_co_list(curve) for curve in obj.data.splines]
@@ -468,9 +506,15 @@ def get_width_height_transform(co_min, co_max, margin, des_size):
 
     diff = max(diff_x, diff_y)
 
+    print("max diff is: ", diff)
+    print("co_min is: ", co_min)
+    print("co_max is: ", co_max)
+
     target = (1 - margin) * des_size
 
     scale = target / diff
+
+    print("scale is: ", scale)
 
     # move everything so that the minimum y and x are 0
     mat_loc1 = mathutils.Matrix.Translation((-co_min[0], co_max[1], 0))
