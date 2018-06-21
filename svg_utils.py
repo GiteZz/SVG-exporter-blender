@@ -153,6 +153,7 @@ def get_co_extremes_curve(obj):
     ymax = -float("inf")
     ymin = float("inf")
 
+    stroke_width = get_stroke_width(obj)/2
     # iterate over points of the curve's first spline
     for spline in obj.data.splines:
         for p in spline.bezier_points:
@@ -187,7 +188,7 @@ def get_co_extremes_curve(obj):
             if co_handle_left[1] < ymin:
                 ymin = co_handle_left[1]
 
-    return xmin, xmax, ymin, ymax
+    return xmin - stroke_width, xmax + stroke_width, ymin - stroke_width, ymax + stroke_width
 
 
 def obj_to_xml(obj, svg_matrix):
@@ -198,6 +199,9 @@ def obj_to_xml(obj, svg_matrix):
         print("empty mesh")
         path_string = get_path_string_empty(obj, svg_matrix)
         fill_string = ' fill="none" stroke="' + color_string + '"'
+        if obj.type == 'CURVE':
+            width_string = '"' + str(get_stroke_width(obj, svg_matrix)) + 'px" '
+            fill_string += ' stroke-width=' + width_string
     else:
         print("full mesh")
         path_string = get_path_string_full(obj, svg_matrix)
@@ -212,11 +216,23 @@ def obj_to_xml(obj, svg_matrix):
 
     return xml_string
 
+
+def get_stroke_width(obj, extra_scale=None):
+    """Calculates stroke width based on the bevel width"""
+    depth = obj.data.bevel_depth
+    if extra_scale is not None:
+        scale_svg = extra_scale[0][0]
+    else:
+        scale_svg = 1
+    scale_obj = obj.matrix_world[0][0]
+    width = 2 * scale_svg * scale_obj * depth
+    return width
+
 def get_path_string_empty(obj, svg_matrix):
     path_string = ""
     if obj.type == 'CURVE':
         for spline in obj.data.splines:
-            path_string += curve_to_svg_path(spline.bezier_points, obj.matrix_world, svg_matrix)
+            path_string += curve_to_svg_path(spline, obj.matrix_world, svg_matrix)
     else:
         verts = obj.data.vertices
         for edge in obj.data.edge_keys:
@@ -226,6 +242,7 @@ def get_path_string_empty(obj, svg_matrix):
 
 
 def edge_svg_path(edge, world_matrix, svg_matrix):
+    """Converts an edge to a svg math"""
     print(world_matrix)
     print(svg_matrix)
     trans_matrix = svg_matrix * world_matrix
@@ -480,7 +497,7 @@ def get_path_string_full(obj, svg_matrix):
         inverted = not inverted
         for loop_index in layer:
             if obj.type == 'CURVE':
-                path_string += curve_to_svg_path(obj.data.splines[loop_index].bezier_points, obj.matrix_world, svg_matrix, inverted)
+                path_string += curve_to_svg_path(obj.data.splines[loop_index], obj.matrix_world, svg_matrix, inverted)
             else:
                 path_string += loop_to_svg_path(co_list[loop_index], obj.matrix_world, svg_matrix, inverted)
 
@@ -541,18 +558,18 @@ def get_width_height_transform(co_min, co_max, margin, des_size):
     return width, height, svg_matrix
 
 
-def curve_to_svg_path(curve, world_matrix, svg_matrix, clockwise=True):
+def curve_to_svg_path(spline, world_matrix, svg_matrix, clockwise=True):
     """Takes a curve and convert it into a svg path"""
+    curve = spline.bezier_points
     path_string = ""
     amount_point = len(curve)
     
     trans_matrix = svg_matrix * world_matrix
     
-    for i in range(amount_point):
+    for i in range(amount_point -1 + int(spline.use_cyclic_u)):
         if i == 0:
             start_co = trans_matrix * curve[0].co
-            path_string += " M " + str(start_co[0])
-            path_string += " " + str(start_co[1])
+            path_string += " M " + co_to_string_svg(start_co)
 
         if clockwise:
             current_handle = curve[i].handle_right
@@ -576,13 +593,20 @@ def curve_to_svg_path(curve, world_matrix, svg_matrix, clockwise=True):
         path_string += ", "
         path_string += co_to_string_svg(co_next)
 
-    path_string += 'z'
+    if spline.use_cyclic_u:
+        path_string += 'z'
+
     return path_string
 
 
 def co_to_string_svg(co):
-    """Make a coordinate string for svg from a coordinate"""
-    return str(co[0]) + " " + str(co[1])
+    """Make a coordinate string for svg from a coordinate
+
+    This also prints only 2 digits after the comma, a lot easier to read the svg
+    """
+    str1 = "%.2f" % co[0]
+    str2 = "%.2f" % co[1]
+    return str1 + " " + str2
 
 
 class xml_handler:
@@ -608,3 +632,17 @@ class xml_handler:
         file = open(location, "w")
         file.write(self.xml)
         file.close()
+
+class object_after_mod:
+    def __init__(self, object, context):
+        new_mesh = object.to_mesh(context.scene, True, "PREVIEW")
+        self.type = 'MESH'
+        self.location = object.location
+        self.matrix_world = object.matrix_world
+        self.data = object_data(object, new_mesh)
+
+class object_data:
+    def __init__(self, object, new_mesh):
+        self.vertices = new_mesh.vertices
+        self.polygons = new_mesh.tessfaces
+

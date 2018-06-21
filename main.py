@@ -15,7 +15,8 @@ from svg_utils import (
         get_co_extremes_mul_obj,
         get_width_height_transform,
         get_in_height_order,
-        xml_handler)
+        xml_handler,
+        object_after_mod)
 
 from bpy.props import (
         FloatProperty,
@@ -65,15 +66,25 @@ class ExportSVG(Operator, ExportHelper):
         print(keywords)
 
         objects = context.selected_objects
-        xmin, xmax, ymin, ymax = get_co_extremes_mul_obj(objects)
+        obj_list = []
+        for obj in context.selected_objects:
+            if len(obj.modifiers) > 0 and obj.type == 'MESH':
+                obj_list.append(object_after_mod(obj, context))
+            else:
+                obj_list.append(obj)
+        xmin, xmax, ymin, ymax = get_co_extremes_mul_obj(obj_list)
 
         width, height, svg_matrix = get_width_height_transform((xmin, ymin), (xmax, ymax), self.margin, self.size)
-        list_height = get_in_height_order(objects)
+        print(svg_matrix)
+        list_height = get_in_height_order(obj_list)
         print(list_height)
+
         xml_obj = xml_handler(svg_matrix, width, height)
 
         for obj in list_height:
             print("working with object: ", obj)
+            print(obj.matrix_world)
+
             xml_obj.add_object(obj)
 
         xml_obj.save(keywords['filepath'])
