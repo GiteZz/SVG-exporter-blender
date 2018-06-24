@@ -16,11 +16,13 @@ from svg_utils import (
         get_width_height_transform,
         get_in_height_order,
         xml_handler,
-        object_after_mod)
+        object_after_mod,
+        get_co_extremes_emptys)
 
 from bpy.props import (
         FloatProperty,
-        IntProperty
+        IntProperty,
+        BoolProperty
         )
 
 from bpy_extras.io_utils import (
@@ -56,6 +58,10 @@ class ExportSVG(Operator, ExportHelper):
         default=0.2,
     )
 
+    by_empty = BoolProperty(
+        name="Define max co by empty"
+    )
+
     size = IntProperty(name="Size",
                        default=500,
                        min=1,
@@ -67,12 +73,19 @@ class ExportSVG(Operator, ExportHelper):
 
         objects = context.selected_objects
         obj_list = []
+        empty_list = []
         for obj in context.selected_objects:
             if len(obj.modifiers) > 0 and obj.type == 'MESH':
                 obj_list.append(object_after_mod(obj, context))
-            else:
+            elif obj.type == 'CURVE':
                 obj_list.append(obj)
-        xmin, xmax, ymin, ymax = get_co_extremes_mul_obj(obj_list)
+            elif obj.type == 'EMPTY':
+                empty_list.append(obj)
+
+        if not self.by_empty:
+            xmin, xmax, ymin, ymax = get_co_extremes_mul_obj(obj_list)
+        else:
+            xmin, xmax, ymin, ymax = get_co_extremes_emptys(empty_list)
 
         width, height, svg_matrix = get_width_height_transform((xmin, ymin), (xmax, ymax), self.margin, self.size)
         print(svg_matrix)

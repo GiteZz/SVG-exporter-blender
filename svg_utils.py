@@ -609,6 +609,25 @@ def co_to_string_svg(co):
     return str1 + " " + str2
 
 
+def get_co_extremes_emptys(emptys):
+    xmax = -float("inf")
+    xmin = float("inf")
+    ymax = -float("inf")
+    ymin = float("inf")
+
+    for empty in emptys:
+        if xmax < empty.location[0]:
+            xmax = empty.location[0]
+        if xmin > empty.location[0]:
+            xmin = empty.location[0]
+        if ymax < empty.location[1]:
+            ymax = empty.location[1]
+        if ymin > empty.location[1]:
+            ymin = empty.location[1]
+
+    return xmin, xmax, ymin, ymax
+
+
 class xml_handler:
     """This class helps with building the xml code"""
     def __init__(self, svg_transfrom, width, height):
